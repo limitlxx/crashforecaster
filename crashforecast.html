@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Train and Forecast</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/brain.js"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center">
+    <div class="container max-w-lg mx-auto p-6 bg-white rounded shadow">
+        <h1 class="text-2xl font-bold text-center mb-4">Train and Forecast</h1>
+
+        <!-- Input Section -->
+        <div class="mb-4">
+            <input id="inputValue" type="number" placeholder="Enter a number"
+                class="w-full px-4 py-2 border rounded focus:outline-none focus:ring focus:ring-blue-200" />
+            <button id="addButton" class="mt-2 w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
+                Add to Array
+            </button>
+            
+        </div>
+
+        <!-- Display Section -->
+        <div class="mb-4">
+            <h2 class="text-xl font-semibold mb-2">Data Visualization</h2>
+            <div id="dataDisplay" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- Train Section -->
+        <div>
+            <button id="trainButton" class="w-full bg-green-500 text-white py-2 rounded hover:bg-green-600">
+                Train Model
+            </button>
+            <div id="loading" class="hidden text-center mt-2 text-gray-500">Training model...</div>
+            <div id="forecastDisplay" class="mt-4 flex flex-wrap gap-2"></div>
+        </div>
+
+        <div class="mt-6">
+            <button id="clearButton" class="mt-2   bg-red-500 text-white py-2 rounded hover:bg-red-600">
+                Clear Storage
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize data array in localStorage
+        const localStorageKey = 'dataArray';
+        const initializeData = () => {
+            if (!localStorage.getItem(localStorageKey)) {
+                localStorage.setItem(localStorageKey, JSON.stringify([]));
+            }
+        };
+        initializeData();
+
+        const getData = () => JSON.parse(localStorage.getItem(localStorageKey));
+        const setData = (data) => localStorage.setItem(localStorageKey, JSON.stringify(data));
+
+        // Assign colors based on value ranges
+        const getColor = (value) => {
+            const numValue = Number(value);
+            if (numValue <= 0) return 'bg-gray-500';
+            if (numValue >= 10) return 'bg-yellow-500';
+            if (numValue >= 2) return 'bg-green-500';
+            return 'bg-red-500';
+        };
+
+        // Normalize data to range [0, 1]
+        const normalizeData = (dataset) => {
+            const min = Math.min(...dataset);
+            const max = Math.max(...dataset);
+            return dataset.map(value => (value - min) / (max - min));
+        };
+
+        // Denormalize data back to original range
+        const denormalizeData = (normalizedDataset, originalDataset) => {
+            const min = Math.min(...originalDataset);
+            const max = Math.max(...originalDataset);
+            return normalizedDataset.map(value => value * (max - min) + min);
+        };
+
+        // Render the data array as colored cells
+        const renderData = () => {
+            const dataDisplay = document.getElementById('dataDisplay');
+            dataDisplay.innerHTML = '';
+            const data = getData();
+            data.forEach((value) => {
+                const cell = document.createElement('div');
+                cell.className = `w-8 h-8 ${getColor(value)} rounded-full`;
+                cell.title = value;
+                dataDisplay.appendChild(cell);
+            });
+        };
+
+        // Add new value to data array
+        document.getElementById('addButton').addEventListener('click', () => {
+            const inputValue = document.getElementById('inputValue').value;
+            if (inputValue) {
+                const data = getData();
+                data.push(Number(inputValue));
+                setData(data);
+                document.getElementById('inputValue').value = '';
+                renderData();
+            }
+        });
+
+        // Clear data array and forecast display
+        document.getElementById('clearButton').addEventListener('click', () => {
+            setData([]);
+            renderData();
+            document.getElementById('forecastDisplay').innerHTML = '';
+        });
+
+        // Train the model and forecast future values
+        document.getElementById('trainButton').addEventListener('click', () => {
+            const data = getData();
+            if (data.length < 6) {
+                alert('Please add at least 6 data points to train the model.');
+                return;
+            }
+
+            const loadingElement = document.getElementById('loading');
+            loadingElement.classList.remove('hidden');
+
+            setTimeout(() => {
+                const normalizedData = normalizeData(data);
+
+                // Prepare sliding window training data
+                const trainingData = [];
+                for (let i = 0; i < normalizedData.length - 6; i++) {
+                    trainingData.push(normalizedData.slice(i, i + 6));
+                }
+
+                const config = {
+                    inputSize: 6,
+                    hiddenLayers: [16, 8],
+                    outputSize: 6,
+                    learningRate: 0.01,
+                };
+
+                const net = new brain.recurrent.LSTMTimeStep(config);
+
+                console.log(trainingData);
+                
+
+                // Train the model
+                net.train(trainingData, {
+                    // iterations: 2000,
+                    log: true,
+                    logPeriod: 100,
+                    learningRate: config.learningRate,
+                });
+
+                // Forecast next values
+                let lastWindow = normalizedData.slice(-6);
+                const forecastData = [];
+
+                
+                
+
+                // for (let i = 0; i < 6; i++) {
+                    console.log('last; ',lastWindow);
+                    // const prediction = net.run(lastWindow);
+                    const prediction = net.run([lastWindow]);
+                    console.log('prediction; ', prediction);
+                    forecastData.push(prediction);
+                    lastWindow = [...lastWindow.slice(1), prediction];
+                    // lastWindow = [[...lastWindow[0].slice(1), prediction]];
+                // }
+
+                // Denormalize forecast values
+                const denormalizedForecastData = denormalizeData(forecastData[0], data);
+
+                console.log('run; ', denormalizedForecastData);
+
+                // Render forecast data
+                const forecastDisplay = document.getElementById('forecastDisplay');
+                forecastDisplay.innerHTML = '';
+                denormalizedForecastData.forEach((value) => {
+                    const cell = document.createElement('div');
+                    cell.className = `w-8 h-8 ${getColor(value)} rounded-full`;
+                    cell.title = value.toFixed(2);
+                    forecastDisplay.appendChild(cell);
+                });
+
+                loadingElement.classList.add('hidden');
+            }, 100);
+        });
+
+        // Initial render
+        renderData();
+    </script>
+</body>
+
+</html>
